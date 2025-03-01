@@ -1,0 +1,34 @@
+{
+  "name": "lambda-throttling",
+  "version": "1.0.0",
+  "description": "Tool to test and document AWS Lambda function throttling behavior",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "ts-node src/cdk/build.ts",
+    "cdk": "cdk",
+    "deploy": "ts-node src/cdk/deploy.ts",
+    "test-throttling": "ts-node src/test-throttling.ts",
+    "monitor": "ts-node src/monitor-metrics.ts",
+    "run-all": "npm run deploy && npm run test-throttling && npm run monitor"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "throttling"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "aws-sdk": "^2.1692.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.11.5",
+    "aws-cdk": "^2.123.0",
+    "aws-cdk-lib": "^2.123.0",
+    "constructs": "^10.3.0",
+    "esbuild": "^0.19.11"
+  }
+}
