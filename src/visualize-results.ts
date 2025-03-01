@@ -361,11 +361,18 @@ function generateHtmlChart(resultsData: any[]): string {
         data: {
           datasets: [{
             label: 'Throttling Events',
-            data: ${JSON.stringify(events.map(e => ({
-              x: e.timeFromStart,
-              y: e.detectedDelayMs,
-              cpuTimeUsed: e.cpuTimeUsed
-            })))},
+            data: ${JSON.stringify(events.map((e, i) => {
+              // Calculate CPU time delta (if possible)
+              const prevCpuTime = i > 0 ? events[i-1].cpuTimeUsed : 0;
+              const cpuTimeDelta = e.cpuTimeUsed - prevCpuTime;
+              
+              return {
+                x: e.timeFromStart,
+                y: e.detectedDelayMs,
+                cpuTimeUsed: e.cpuTimeUsed,
+                cpuTimeDelta: cpuTimeDelta
+              };
+            }))},
             backgroundColor: colorPalette[${index % 5}],
             pointRadius: 5,
           }]
@@ -392,9 +399,12 @@ function generateHtmlChart(resultsData: any[]): string {
               callbacks: {
                 label: function(context) {
                   const point = context.raw;
-                  let label = 'Delay: ' + point.y + ' ms';
+                  let label = 'Delay: ' + point.y.toFixed(2) + ' ms';
                   if (point.cpuTimeUsed !== undefined) {
                     label += ', CPU time: ' + point.cpuTimeUsed.toFixed(2) + ' ms';
+                  }
+                  if (point.cpuTimeDelta !== undefined) {
+                    label += ', CPU delta: ' + point.cpuTimeDelta.toFixed(2) + ' ms';
                   }
                   return label;
                 }
