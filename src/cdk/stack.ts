@@ -10,6 +10,45 @@ export class LambdaThrottlingStack extends cdk.Stack {
 
     // Define memory sizes to test
     const memorySizes = [128, 256, 512, 1024, 1769];
+    
+    // Create a calibration Lambda with 3000 MB RAM (more than 1 CPU)
+    const calibrationFunctionName = `throttling-calibration-3000mb`;
+    const calibrationFunction = new lambda.Function(this, `CalibrationTest3000MB`, {
+      functionName: calibrationFunctionName,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'lambda-function.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'dist')),
+      timeout: cdk.Duration.seconds(60), // Longer timeout for calibration
+      memorySize: 3000,
+      description: `Calibration Lambda function for measuring unthrottled performance`,
+      environment: {
+        NODE_OPTIONS: '--enable-source-maps',
+        IS_CALIBRATION: 'true',
+      },
+    });
+    
+    // Allow the calibration function to write to CloudWatch logs
+    calibrationFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'logs:CreateLogGroup',
+          'logs:CreateLogStream',
+          'logs:PutLogEvents',
+        ],
+        resources: ['*'],
+      })
+    );
+    
+    // Output the ARN and name of the calibration function
+    new cdk.CfnOutput(this, `CalibrationFunction3000MB`, {
+      value: calibrationFunction.functionArn,
+      description: `The ARN of the calibration Lambda function with 3000MB memory`,
+    });
+    
+    new cdk.CfnOutput(this, `CalibrationFunctionName3000MB`, {
+      value: calibrationFunctionName,
+      description: `The name of the calibration Lambda function with 3000MB memory`,
+    });
 
     // Create a Lambda function for each memory size
     memorySizes.forEach(memorySize => {

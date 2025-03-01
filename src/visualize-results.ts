@@ -60,9 +60,17 @@ function loadResultFile(filePath: string): any {
 function generateHtmlChart(resultsData: any[]): string {
   // Group results by memory size
   const resultsByMemory: Record<string, any[]> = {};
+  let calibrationResult = null;
   
   resultsData.forEach(result => {
     const memorySize = result.memorySize;
+    
+    // Separate calibration results from test results
+    if (result.isCalibration) {
+      calibrationResult = result;
+      return;
+    }
+    
     if (!resultsByMemory[memorySize]) {
       resultsByMemory[memorySize] = [];
     }
@@ -116,10 +124,18 @@ function generateHtmlChart(resultsData: any[]): string {
       border-radius: 4px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
+    .calibration-card {
+      background-color: #e8f4ff;
+      border-left: 4px solid #4285f4;
+    }
     .stat-value {
       font-size: 24px;
       font-weight: bold;
       margin: 5px 0;
+    }
+    .stat-label {
+      font-size: 14px;
+      color: #666;
     }
     canvas {
       max-height: 400px;
@@ -138,8 +154,20 @@ function generateHtmlChart(resultsData: any[]): string {
       </div>
       <div class="stat-card">
         <h3>Total Tests</h3>
-        <div class="stat-value">${resultsData.length}</div>
+        <div class="stat-value">${Object.keys(resultsByMemory).length}</div>
       </div>
+      ${calibrationResult ? `
+      <div class="stat-card calibration-card">
+        <h3>Calibration Baseline</h3>
+        <div class="stat-value">${calibrationResult.calibrationResults?.averageIterationTimeMs.toFixed(4)} ms</div>
+        <div class="stat-label">Unthrottled iteration time (3000MB Lambda)</div>
+      </div>
+      <div class="stat-card calibration-card">
+        <h3>CPU Time Per Iteration</h3>
+        <div class="stat-value">${calibrationResult.calibrationResults?.averageCpuTimePerIterationMs.toFixed(4)} ms</div>
+        <div class="stat-label">CPU time used per iteration</div>
+      </div>
+      ` : ''}
     </div>
     
     <div class="chart-container">
@@ -156,6 +184,13 @@ function generateHtmlChart(resultsData: any[]): string {
       <h2>CPU Utilization by Memory Size</h2>
       <canvas id="cpuUtilizationChart"></canvas>
     </div>
+    
+    ${calibrationResult ? `
+    <div class="chart-container">
+      <h2>CPU Efficiency vs Baseline</h2>
+      <canvas id="cpuEfficiencyChart"></canvas>
+    </div>
+    ` : ''}
 `;
 
   // Add individual memory size sections with throttling events timelines
@@ -341,6 +376,71 @@ function generateHtmlChart(resultsData: any[]): string {
         }
       }
     );
+    
+    ${calibrationResult ? `
+    // CPU Efficiency Chart (compared to calibration)
+    const calibrationBaseline = ${calibrationResult.calibrationResults?.averageIterationTimeMs || 0};
+    const calibrationCpuTime = ${calibrationResult.calibrationResults?.averageCpuTimePerIterationMs || 0};
+    
+    // Calculate efficiency for each memory level
+    const efficiencyData = ${JSON.stringify(Object.entries(resultsByMemory).map(([_, results]) => {
+      const latestResult = results[0];
+      
+      // Calculate expected CPU time based on number of iterations and calibration baseline
+      if (calibrationResult && calibrationResult.calibrationResults && latestResult.totalIterations) {
+        const expectedCpuTime = latestResult.totalIterations * calibrationResult.calibrationResults.averageCpuTimePerIterationMs;
+        const actualCpuTime = latestResult.cpuTimeUsed;
+        const cpuEfficiency = (expectedCpuTime / actualCpuTime) * 100;
+        return cpuEfficiency.toFixed(2);
+      }
+      return 0;
+    }))};
+    
+    // Create CPU efficiency chart
+    new Chart(
+      document.getElementById('cpuEfficiencyChart'),
+      {
+        type: 'bar',
+        data: {
+          labels: memoryLabels,
+          datasets: [{
+            label: 'CPU Efficiency (% of baseline)',
+            data: efficiencyData,
+            backgroundColor: 'rgba(75, 192, 192, 0.7)',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Efficiency (%)'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Lambda Memory Size'
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const efficiency = context.raw;
+                  return \`CPU Efficiency: \${efficiency}% of 3000MB baseline\`;
+                }
+              }
+            }
+          }
+        }
+      }
+    );
+    ` : ''}
 `;
 
   // Add individual timeline charts for each memory size
