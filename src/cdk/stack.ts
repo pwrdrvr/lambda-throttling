@@ -91,6 +91,44 @@ export class LambdaThrottlingStack extends cdk.Stack {
         value: functionName,
         description: `The name of the throttling test Lambda function with ${memorySize}MB memory`,
       });
+      
+      // Create adaptive Lambda functions that stay under throttle intervals
+      const adaptiveFunctionName = `adaptive-throttling-${memorySize}mb`;
+      const adaptiveFunction = new lambda.Function(this, `AdaptiveThrottling${memorySize}MB`, {
+        functionName: adaptiveFunctionName,
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: 'adaptive-lambda-function.handler',
+        code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'dist')),
+        timeout: cdk.Duration.seconds(30),
+        memorySize,
+        description: `Adaptive Lambda function that stays under throttle intervals at ${memorySize} MB`,
+        environment: {
+          NODE_OPTIONS: '--enable-source-maps',
+        },
+      });
+      
+      // Allow the adaptive function to write to CloudWatch logs
+      adaptiveFunction.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: [
+            'logs:CreateLogGroup',
+            'logs:CreateLogStream',
+            'logs:PutLogEvents',
+          ],
+          resources: ['*'],
+        })
+      );
+      
+      // Output the ARN and name of the adaptive function
+      new cdk.CfnOutput(this, `AdaptiveFunction${memorySize}MB`, {
+        value: adaptiveFunction.functionArn,
+        description: `The ARN of the adaptive Lambda function with ${memorySize}MB memory`,
+      });
+      
+      new cdk.CfnOutput(this, `AdaptiveFunctionName${memorySize}MB`, {
+        value: adaptiveFunctionName,
+        description: `The name of the adaptive Lambda function with ${memorySize}MB memory`,
+      });
     });
   }
 }

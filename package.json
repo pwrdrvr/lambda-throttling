@@ -18,8 +18,12 @@
     "test-throttling:intense": "ts-node src/test-throttling.ts --dataSize=500",
     "test-throttling:extreme": "ts-node src/test-throttling.ts --dataSize=1000",
     "test-throttling:calibration": "ts-node src/test-throttling.ts --skipCalibration=false",
+    "test-adaptive": "ts-node src/test-adaptive-throttling.ts",
     "visualize": "ts-node --transpile-only src/visualize-results.ts",
-    "run-all": "npm run deploy && npm run test-throttling && npm run visualize"
+    "visualize:adaptive": "ts-node --transpile-only src/visualize-adaptive-results.ts",
+    "update-docs": "mkdir -p docs && cp charts/throttling-analysis-*.html docs/ && cp charts/adaptive-throttling-analysis-*.html docs/",
+    "run-all": "npm run deploy && npm run test-throttling && npm run visualize && npm run update-docs",
+    "run-adaptive": "npm run deploy && npm run test-adaptive && npm run visualize:adaptive && npm run update-docs"
   },
   "keywords": [
     "aws",

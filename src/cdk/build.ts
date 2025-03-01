@@ -9,7 +9,7 @@ async function build() {
     fs.mkdirSync(distPath, { recursive: true });
   }
 
-  // Build the Lambda function
+  // Build the standard Lambda function
   await esbuild.build({
     entryPoints: [path.join(__dirname, '..', 'lambda-function.ts')],
     bundle: true,
@@ -21,10 +21,24 @@ async function build() {
     external: ['aws-sdk'],
   });
 
-  console.log('Lambda function built successfully');
+  console.log('Standard Lambda function built successfully');
+
+  // Build the adaptive Lambda function
+  await esbuild.build({
+    entryPoints: [path.join(__dirname, '..', 'adaptive-lambda-function.ts')],
+    bundle: true,
+    minify: false,
+    sourcemap: true,
+    platform: 'node',
+    target: ['node20'],
+    outfile: path.join(distPath, 'adaptive-lambda-function.js'),
+    external: ['aws-sdk'],
+  });
+
+  console.log('Adaptive Lambda function built successfully');
 }
 
 build().catch(err => {
-  console.error('Error building Lambda function:', err);
+  console.error('Error building Lambda functions:', err);
   process.exit(1);
 });

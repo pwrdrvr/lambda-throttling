@@ -44,14 +44,20 @@ npm install
 npm run deploy
 ```
 
-This creates 5 separate Lambda functions at different memory levels:
+This creates the following Lambda functions:
 - `throttling-test-128mb` (128 MB)
 - `throttling-test-256mb` (256 MB) 
 - `throttling-test-512mb` (512 MB)
 - `throttling-test-1024mb` (1024 MB)
 - `throttling-test-1769mb` (1769 MB)
+- `throttling-calibration-3000mb` (3000 MB) for baseline calibration
+- `adaptive-throttling-128mb` (128 MB) for adaptive workload testing
+- `adaptive-throttling-256mb` (256 MB) for adaptive workload testing
+- `adaptive-throttling-512mb` (512 MB) for adaptive workload testing
+- `adaptive-throttling-1024mb` (1024 MB) for adaptive workload testing
+- `adaptive-throttling-1769mb` (1769 MB) for adaptive workload testing
 
-2. Run the throttling tests on all memory configurations:
+2. Run the standard throttling tests to observe throttling behavior:
 
 ```bash
 # Test all memory sizes (128, 256, 512, 1024, 1769 MB)
@@ -77,21 +83,38 @@ npm run test-throttling:extreme
 npx ts-node src/test-throttling.ts --memory=512 --duration=10000 --dataSize=200
 ```
 
-3. Visualize the results:
+3. Run the adaptive throttling tests that stay under throttle intervals:
 
 ```bash
-npm run visualize
+# Test all memory sizes with adaptive workloads
+npm run test-adaptive
 ```
 
-This generates an HTML report with charts in the `charts/` directory.
-
-4. Run everything in sequence (deploy, test, visualize):
+4. Visualize the results:
 
 ```bash
+# Visualize standard throttling tests
+npm run visualize
+
+# Visualize adaptive throttling tests
+npm run visualize:adaptive
+```
+
+This generates HTML reports with charts in the `charts/` directory.
+
+5. Run everything in sequence:
+
+```bash
+# Run standard throttling tests (deploy, test, visualize)
 npm run run-all
+
+# Run adaptive throttling tests (deploy, test, visualize)
+npm run run-adaptive
 ```
 
 ## How It Works
+
+### Standard Throttling Tests
 
 1. **Calibration Phase:**
    - A 3,000 MB Lambda (over 1 full vCPU) is used to establish baseline performance
@@ -116,6 +139,37 @@ npm run run-all
    - Generates interactive visualizations showing throttling patterns
    - Tracks iteration-by-iteration performance to detect early throttling
 
+### Adaptive Throttling Tests
+
+1. **Smart CPU Allocation:**
+   - Based on the principle that 1769 MB = 100% of a vCPU (1 full CPU)
+   - Determines the Lambda function's CPU allocation as a fraction of a full vCPU
+   - A 128 MB Lambda function receives approximately 7.2% of a CPU (128/1769)
+   
+2. **Throttle Interval Awareness:**
+   - AWS Lambda throttles CPU in 20ms intervals
+   - For example, a 128 MB Lambda gets approximately 1.44ms of CPU time per 20ms window (7.2% * 20ms)
+   - Lambda is throttled (paused) for the remaining 18.56ms out of every 20ms interval
+
+3. **Adaptive Workload Sizing:**
+   - Calculates how much workload can be processed in a single throttle interval
+   - Scales the data size based on the Lambda's CPU allocation percentage
+   - Reduces the data size by 10% as a safety margin to avoid exceeding the throttle interval
+   - Example: A 100KB job on a 1769 MB Lambda becomes a 7KB job on a 128 MB Lambda
+
+4. **Precise Timing Control:**
+   - Executes one unit of work per throttle interval (every 20ms)
+   - Uses busy-waiting to ensure precise timing between iterations
+   - Measures actual CPU time and wall clock time for each iteration
+   - Records execution times to detect any unexpected throttling
+   
+5. **Analysis & Visualization:**
+   - Compares CPU allocation percentages across memory sizes
+   - Shows the adaptive data size for each memory configuration
+   - Measures actual execution time against the 20ms throttle interval
+   - Visualizes iteration-by-iteration performance 
+   - Detects any potential throttling events where execution exceeds expectations
+
 ## Testing Methodology
 
 The Lambda function:
@@ -132,6 +186,44 @@ The Lambda function:
 - **Throttling Events**: Count of distinct pauses in execution
 - **Event Timeline**: Shows when throttling occurred during execution
 - **Delay Duration**: Shows the length of each throttling pause
+
+## Example Visualizations
+
+### Standard Throttling Tests
+
+#### Throttling Ratio by Memory Size
+This chart shows the percentage of time a function spends being throttled at different memory levels:
+
+![Throttling Ratio Chart](https://raw.githubusercontent.com/pwrdrvr/lambda-throttling/main/docs/images/throttling-ratio.png)
+
+#### Iteration Time Analysis
+This chart shows the execution time of each iteration, helping identify throttling patterns:
+
+![Iteration Times Chart](https://raw.githubusercontent.com/pwrdrvr/lambda-throttling/main/docs/images/iteration-times.png)
+
+#### Throttling Events Timeline
+This scatter plot shows when throttling events occurred and their severity:
+
+![Throttling Events Timeline](https://raw.githubusercontent.com/pwrdrvr/lambda-throttling/main/docs/images/throttling-events.png)
+
+### Adaptive Throttling Tests
+
+#### CPU Allocation by Memory Size
+This chart shows how CPU allocation scales with memory size:
+
+![CPU Allocation Chart](https://raw.githubusercontent.com/pwrdrvr/lambda-throttling/main/docs/images/cpu-allocation.png)
+
+#### Adaptive Data Size by Memory Size
+This chart shows how the workload size is adjusted based on memory allocation:
+
+![Adaptive Data Size Chart](https://raw.githubusercontent.com/pwrdrvr/lambda-throttling/main/docs/images/adaptive-data-size.png)
+
+#### Execution Time by Memory Size
+This chart shows CPU time vs. wall clock time for different memory sizes with adaptive workloads:
+
+![Adaptive Execution Time Chart](https://raw.githubusercontent.com/pwrdrvr/lambda-throttling/main/docs/images/adaptive-execution-time.png)
+
+For interactive visualizations with tooltips and more details, view the [full HTML report](https://pwrdrvr.github.io/lambda-throttling/).
 
 ## Memory Size and CPU Allocation
 
