@@ -161,6 +161,7 @@ function generateHtmlChart(resultsData: any[]): string {
         <h3>Calibration Baseline</h3>
         <div class="stat-value">${calibrationResult.calibrationResults?.averageIterationTimeMs.toFixed(4)} ms</div>
         <div class="stat-label">Unthrottled iteration time (3000MB Lambda)</div>
+        <div class="stat-label">Min: ${calibrationResult.calibrationResults?.minIterationTimeMs.toFixed(4)} ms / Max: ${calibrationResult.calibrationResults?.maxIterationTimeMs.toFixed(4)} ms</div>
       </div>
       <div class="stat-card calibration-card">
         <h3>CPU Time Per Iteration</h3>

@@ -45,6 +45,8 @@ export const handler = async (event: any): Promise<any> => {
     calibrationResults: isCalibration ? {
       averageIterationTimeMs: 0,
       averageCpuTimePerIterationMs: 0,
+      minIterationTimeMs: 0,
+      maxIterationTimeMs: 0,
       totalWarmupIterations: warmupIterations,
       totalCalibrationIterations: calibrationIterations
     } : null,
@@ -141,15 +143,17 @@ export const handler = async (event: any): Promise<any> => {
     const totalIterationTime = calibrationData.reduce((sum, data) => sum + data.iterationTimeMs, 0);
     const totalCpuTime = calibrationData.reduce((sum, data) => sum + data.cpuTimeMs, 0);
     
-    if (results.calibrationResults) {
-      results.calibrationResults.averageIterationTimeMs = totalIterationTime / calibrationData.length;
-      results.calibrationResults.averageCpuTimePerIterationMs = totalCpuTime / calibrationData.length;
-    }
-    
     // Add calibration statistics
     const iterationTimes = calibrationData.map(d => d.iterationTimeMs);
     const minIterationTime = Math.min(...iterationTimes);
     const maxIterationTime = Math.max(...iterationTimes);
+    
+    if (results.calibrationResults) {
+      results.calibrationResults.averageIterationTimeMs = totalIterationTime / calibrationData.length;
+      results.calibrationResults.averageCpuTimePerIterationMs = totalCpuTime / calibrationData.length;
+      results.calibrationResults.minIterationTimeMs = minIterationTime;
+      results.calibrationResults.maxIterationTimeMs = maxIterationTime;
+    }
     
     console.log(`Calibration results: Average iteration time: ${results.calibrationResults?.averageIterationTimeMs.toFixed(4)}ms, Average CPU time: ${results.calibrationResults?.averageCpuTimePerIterationMs.toFixed(4)}ms`);
     console.log(`Min iteration time: ${minIterationTime.toFixed(4)}ms, Max iteration time: ${maxIterationTime.toFixed(4)}ms`);
