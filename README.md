@@ -16,6 +16,10 @@ This tool helps to:
 2. Visualize throttling patterns and ratios
 3. Document the real-world impact of Lambda memory configuration on CPU-intensive tasks
 
+## Results
+
+**[View the latest visualization report](https://pwrdrvr.github.io/lambda-throttling/)**
+
 ## Getting Started
 
 ### Prerequisites
@@ -81,7 +85,6 @@ npm run visualize
 
 This generates an HTML report with charts in the `charts/` directory.
 
-**[View the latest visualization report](https://pwrdrvr.github.io/lambda-throttling/)**
 4. Run everything in sequence (deploy, test, visualize):
 
 ```bash
