@@ -90,6 +90,9 @@ export const handler = async (event: any): Promise<any> => {
   let lastIterationCpuTime = 0;
   let warmupComplete = false;
   
+  // For collecting log messages to avoid logging during timing-sensitive operations
+  const logMessages: string[] = [];
+  
   if (isCalibration) {
     console.log(`Starting calibration with ${warmupIterations} warmup iterations and ${calibrationIterations} measurement iterations`);
     
@@ -108,6 +111,9 @@ export const handler = async (event: any): Promise<any> => {
     
     // Calibration phase - collect precise measurements
     console.log('Starting calibration phase...');
+    
+    // We don't need to worry about avoiding console.log during calibration 
+    // as we're measuring each iteration independently with high-resolution timers
     for (let i = 0; i < calibrationIterations; i++) {
       const iterationStartTime = hrTime();
       const iterationCpuStartTime = process.cpuUsage();
@@ -140,7 +146,13 @@ export const handler = async (event: any): Promise<any> => {
       results.calibrationResults.averageCpuTimePerIterationMs = totalCpuTime / calibrationData.length;
     }
     
+    // Add calibration statistics
+    const iterationTimes = calibrationData.map(d => d.iterationTimeMs);
+    const minIterationTime = Math.min(...iterationTimes);
+    const maxIterationTime = Math.max(...iterationTimes);
+    
     console.log(`Calibration results: Average iteration time: ${results.calibrationResults?.averageIterationTimeMs.toFixed(4)}ms, Average CPU time: ${results.calibrationResults?.averageCpuTimePerIterationMs.toFixed(4)}ms`);
+    console.log(`Min iteration time: ${minIterationTime.toFixed(4)}ms, Max iteration time: ${maxIterationTime.toFixed(4)}ms`);
   } else {
     // Regular throttling test mode
     
@@ -172,7 +184,7 @@ export const handler = async (event: any): Promise<any> => {
         isThrottled = throttleFactor > 1.5; // If it took 50% longer than baseline, consider it throttled
         
         if (isThrottled) {
-          console.log(`Precise throttling detected: Took ${elapsedSinceLastCheck.toFixed(2)}ms vs expected ${expectedTime.toFixed(2)}ms (${throttleFactor.toFixed(2)}x slower)`);
+          logMessages.push(`Precise throttling detected: Took ${elapsedSinceLastCheck.toFixed(2)}ms vs expected ${expectedTime.toFixed(2)}ms (${throttleFactor.toFixed(2)}x slower)`);
         }
         
         lastIterationCpuTime = cpuTimeUsed;
@@ -187,7 +199,7 @@ export const handler = async (event: any): Promise<any> => {
           cpuTimeUsed
         });
         
-        console.log(`Throttling detected at ${timeElapsedWallClock}ms: ${elapsedSinceLastCheck.toFixed(2)}ms delay, CPU time used: ${cpuTimeUsed.toFixed(2)}ms`);
+        logMessages.push(`Throttling detected at ${timeElapsedWallClock}ms: ${elapsedSinceLastCheck.toFixed(2)}ms delay, CPU time used: ${cpuTimeUsed.toFixed(2)}ms`);
       }
       
       lastCheckTime = now;
@@ -205,6 +217,14 @@ export const handler = async (event: any): Promise<any> => {
   results.totalCpuTime = results.cpuTimeUsed; // Use the actual CPU time instead of high-resolution timer
   results.throttlingRatio = 1 - (results.cpuTimeUsed / results.totalWallClockTime);
   
+  // Output collected log messages now that timing measurements are complete
+  if (logMessages.length > 0) {
+    console.log("\nDetailed throttling events:");
+    logMessages.forEach((msg, index) => {
+      console.log(`${index + 1}. ${msg}`);
+    });
+  }
+
   console.log(`Test completed. Wall clock time: ${results.totalWallClockTime}ms, CPU time: ${results.totalCpuTime.toFixed(2)}ms`);
   console.log(`CPU time used: ${results.cpuTimeUsed.toFixed(2)}ms, Total iterations: ${results.totalIterations}`);
   console.log(`Throttling ratio: ${(results.throttlingRatio * 100).toFixed(2)}% (higher = more throttling)`);
