@@ -17,27 +17,26 @@ export const handler = async (event: any): Promise<any> => {
   // Calculate how much work we can do in a throttle interval (20ms)
   // We subtract 10% as a safety margin to avoid hitting throttling
   const throttleIntervalMs = 20;
-  const safetyFactor = 0.9;
+  const safetyFactor = cpuAllocation < 0.3 ? 0.55 : 0.85;
   const allowedWorkloadPerInterval = cpuAllocation * throttleIntervalMs * safetyFactor;
   
-  // Base data size (calibrated for 1769 MB Lambda)
-  const baseDataSizeKB = event.baseDataSizeKB || 100; // Size in KB for 1769 MB Lambda to process in ~20ms
+  // Use calibration data if provided
+  const calibrationCpuTimeFor100KBMs = event.calibrationCpuTimeFor100KBMs || 3.6; // Default from prior experiments
+  const calibrationDataSizeKB = event.calibrationDataSizeKB || 100; // Standard calibration size
   
-  // Calculate initial adaptive data size for our Lambda based on its memory allocation
-  let adaptiveDataSizeKB = Math.max(1, Math.floor(baseDataSizeKB * cpuAllocation));
-  let dataSize = adaptiveDataSizeKB * 1024;
+  // Calculate data size based on calibration data
+  // Formula: (allowed CPU time / calibration CPU time) * calibration data size
+  const calibratedDataSizeKB = Math.max(1, Math.floor(
+    (allowedWorkloadPerInterval / calibrationCpuTimeFor100KBMs) * calibrationDataSizeKB
+  ));
   
-  // Flag to track if we've adapted the data size after the first iteration
-  let hasAdaptedDataSize = false;
-  
-  // Target CPU time - we want to use about 80% of our allowed CPU time
-  // to leave room for variations in performance
-  const targetCpuTimeMs = allowedWorkloadPerInterval * 0.8;
+  // Size in bytes
+  const dataSize = calibratedDataSizeKB * 1024;
   
   console.log(`CPU allocation: ${(cpuAllocation * 100).toFixed(2)}% of a vCPU`);
   console.log(`Allowed workload per 20ms interval: ${allowedWorkloadPerInterval.toFixed(2)}ms of CPU time`);
-  console.log(`Target CPU time per iteration: ${targetCpuTimeMs.toFixed(2)}ms`);
-  console.log(`Initial adaptive data size: ${adaptiveDataSizeKB}KB`);
+  console.log(`Calibration: ${calibrationDataSizeKB}KB workload takes ${calibrationCpuTimeFor100KBMs.toFixed(2)}ms on full CPU`);
+  console.log(`Calibrated data size: ${calibratedDataSizeKB}KB (scaled based on CPU allocation)`);
 
   // Test parameters from event or defaults
   const testDurationMs = event.testDurationMs || 5000; // Total test duration
@@ -51,14 +50,14 @@ export const handler = async (event: any): Promise<any> => {
     totalCpuTime: 0,
     memorySize,
     cpuAllocation,
-    initialDataSizeKB: adaptiveDataSizeKB,
-    finalDataSizeKB: adaptiveDataSizeKB, // Will be updated if adaptation occurs
+    calibrationCpuTimeFor100KBMs,
+    calibrationDataSizeKB,
+    calibratedDataSizeKB,
     totalIterations: 0,
     iterationResults: [] as {
       iteration: number,
       wallClockTimeMs: number,
       cpuTimeMs: number,
-      dataSizeKB: number,
       startTime: number
     }[]
   };
@@ -85,7 +84,7 @@ export const handler = async (event: any): Promise<any> => {
     const iterationStartTime = Date.now();
     const iterationCpuStart = process.cpuUsage();
     
-    // Perform the work with current data size
+    // Perform the work with calibrated data size
     performWork(dataSize);
     results.totalIterations++;
     
@@ -99,32 +98,10 @@ export const handler = async (event: any): Promise<any> => {
       iteration: i + 1,
       wallClockTimeMs,
       cpuTimeMs,
-      dataSizeKB: adaptiveDataSizeKB,
       startTime: iterationStartTime - results.startTime
     });
     
-    // Adapt data size after first iteration if needed
-    if (i === 0 && !hasAdaptedDataSize) {
-      // Calculate ratio of actual to target CPU time
-      const cpuTimeRatio = targetCpuTimeMs / cpuTimeMs;
-      
-      // Only adapt if the ratio is significantly different from 1
-      if (cpuTimeRatio < 0.7 || cpuTimeRatio > 1.3) {
-        // Adjust data size based on the ratio (keeping it within reasonable bounds)
-        const newDataSizeKB = Math.max(1, Math.floor(adaptiveDataSizeKB * cpuTimeRatio));
-        
-        console.log(`Adapting data size based on first iteration: ${adaptiveDataSizeKB}KB -> ${newDataSizeKB}KB (CPU time: ${cpuTimeMs.toFixed(2)}ms, target: ${targetCpuTimeMs.toFixed(2)}ms)`);
-        
-        adaptiveDataSizeKB = newDataSizeKB;
-        dataSize = adaptiveDataSizeKB * 1024;
-        results.finalDataSizeKB = adaptiveDataSizeKB;
-        hasAdaptedDataSize = true;
-      } else {
-        console.log(`First iteration CPU time ${cpuTimeMs.toFixed(2)}ms is close to target ${targetCpuTimeMs.toFixed(2)}ms, keeping data size at ${adaptiveDataSizeKB}KB`);
-      }
-    }
-    
-    console.log(`Iteration ${i + 1}: Wall clock: ${wallClockTimeMs.toFixed(2)}ms, CPU: ${cpuTimeMs.toFixed(2)}ms, Data size: ${adaptiveDataSizeKB}KB`);
+    console.log(`Iteration ${i + 1}: Wall clock: ${wallClockTimeMs.toFixed(2)}ms, CPU: ${cpuTimeMs.toFixed(2)}ms`);
     
     // Wait until the next 20ms interval to start the next iteration
     // This ensures we're not stacking work across throttle intervals
@@ -170,9 +147,13 @@ export const handler = async (event: any): Promise<any> => {
   const maxWallClockTime = Math.max(...wallClockTimes);
   const minWallClockTime = Math.min(...wallClockTimes);
   
+  // Calculate CPU utilization percentage - how much of our allowed CPU time did we use?
+  const cpuUtilizationPercent = (avgCpuTime / allowedWorkloadPerInterval) * 100;
+  
   console.log(`\nTest completed in ${results.totalWallClockTime}ms with ${results.totalIterations} iterations`);
   console.log(`CPU time: avg=${avgCpuTime.toFixed(2)}ms, min=${minCpuTime.toFixed(2)}ms, max=${maxCpuTime.toFixed(2)}ms`);
   console.log(`Wall clock: avg=${avgWallClockTime.toFixed(2)}ms, min=${minWallClockTime.toFixed(2)}ms, max=${maxWallClockTime.toFixed(2)}ms`);
+  console.log(`CPU utilization: ${cpuUtilizationPercent.toFixed(2)}% of allowed CPU time (${allowedWorkloadPerInterval.toFixed(2)}ms)`);
   
   // Determine if we've successfully avoided throttling
   const throttlingThreshold = throttleIntervalMs * 1.5; // If any iteration takes 50% longer than throttle interval
@@ -181,7 +162,7 @@ export const handler = async (event: any): Promise<any> => {
   if (potentialThrottlingEvents > 0) {
     console.log(`WARNING: Detected ${potentialThrottlingEvents} potential throttling events`);
   } else {
-    console.log('SUCCESS: No throttling detected - workload was properly adapted to Lambda size');
+    console.log('SUCCESS: No throttling detected - calibrated workload properly sized for Lambda');
   }
   
   return {
@@ -195,7 +176,10 @@ export const handler = async (event: any): Promise<any> => {
         avgWallClockTime,
         minWallClockTime,
         maxWallClockTime,
-        potentialThrottlingEvents
+        potentialThrottlingEvents,
+        allowedCpuTimePerInterval: allowedWorkloadPerInterval,
+        cpuUtilizationPercent,
+        calibratedDataSizeKB
       }
     }, null, 2)
   };

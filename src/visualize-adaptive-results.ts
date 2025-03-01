@@ -53,8 +53,9 @@ const generateHtml = (results: any[]) => {
     return {
       memorySize: r.memorySize,
       cpuAllocation: parsedBody.cpuAllocation,
-      initialDataSizeKB: parsedBody.initialDataSizeKB || parsedBody.adaptiveDataSizeKB,
-      finalDataSizeKB: parsedBody.finalDataSizeKB || parsedBody.adaptiveDataSizeKB,
+      calibrationDataSizeKB: parsedBody.calibrationDataSizeKB || 100,
+      calibrationCpuTimeFor100KBMs: parsedBody.calibrationCpuTimeFor100KBMs || 3.6,
+      calibratedDataSizeKB: parsedBody.calibratedDataSizeKB || parsedBody.initialDataSizeKB || parsedBody.adaptiveDataSizeKB,
       avgCpuTime: parsedBody.stats.avgCpuTime,
       avgWallClockTime: parsedBody.stats.avgWallClockTime,
       minCpuTime: parsedBody.stats.minCpuTime,
@@ -62,6 +63,8 @@ const generateHtml = (results: any[]) => {
       minWallClockTime: parsedBody.stats.minWallClockTime,
       maxWallClockTime: parsedBody.stats.maxWallClockTime,
       potentialThrottlingEvents: parsedBody.stats.potentialThrottlingEvents,
+      cpuUtilizationPercent: parsedBody.stats.cpuUtilizationPercent || 0,
+      allowedCpuTimePerInterval: parsedBody.stats.allowedCpuTimePerInterval || 0,
       iterationResults: parsedBody.iterationResults
     };
   });
@@ -72,14 +75,19 @@ const generateHtml = (results: any[]) => {
     y: (r.cpuAllocation * 100).toFixed(2)
   }));
   
-  const initialDataSizes = processedResults.map(r => ({
+  const calibratedDataSizes = processedResults.map(r => ({
     x: r.memorySize,
-    y: r.initialDataSizeKB
+    y: r.calibratedDataSizeKB
   }));
   
-  const finalDataSizes = processedResults.map(r => ({
+  const cpuUtilization = processedResults.map(r => ({
     x: r.memorySize,
-    y: r.finalDataSizeKB
+    y: r.cpuUtilizationPercent.toFixed(2)
+  }));
+  
+  const allowedCpuTime = processedResults.map(r => ({
+    x: r.memorySize,
+    y: r.allowedCpuTimePerInterval.toFixed(2)
   }));
   
   const avgCpuTimes = processedResults.map(r => ({
@@ -184,6 +192,12 @@ const generateHtml = (results: any[]) => {
   </div>
   
   <div class="chart-container">
+    <h2>CPU Utilization by Memory Size</h2>
+    <p>How well we utilized our allowed CPU time in each 20ms interval</p>
+    <canvas id="cpuUtilizationChart"></canvas>
+  </div>
+  
+  <div class="chart-container">
     <h2>Potential Throttling Events by Memory Size</h2>
     <p>Count of iterations that took longer than expected (may indicate throttling)</p>
     <canvas id="throttlingEventsChart"></canvas>
@@ -199,30 +213,28 @@ const generateHtml = (results: any[]) => {
     <h2>Summary Results</h2>
     <table>
       <tr>
-        <th>Memory Size (MB)</th>
+        <th>Memory (MB)</th>
         <th>CPU Allocation (%)</th>
-        <th>Initial Data Size (KB)</th>
-        <th>Final Data Size (KB)</th>
+        <th>Allowed CPU Time (ms)</th>
+        <th>Calibrated Data Size (KB)</th>
         <th>Avg CPU Time (ms)</th>
-        <th>Min CPU Time (ms)</th>
-        <th>Max CPU Time (ms)</th>
+        <th>CPU Utilization (%)</th>
         <th>Avg Wall Clock (ms)</th>
-        <th>Min Wall Clock (ms)</th>
-        <th>Max Wall Clock (ms)</th>
+        <th>Min/Max CPU (ms)</th>
+        <th>Min/Max Wall Clock (ms)</th>
         <th>Potential Throttling</th>
       </tr>
       ${processedResults.map(r => `
       <tr>
         <td>${r.memorySize}</td>
         <td>${(r.cpuAllocation * 100).toFixed(2)}%</td>
-        <td>${r.initialDataSizeKB}</td>
-        <td>${r.finalDataSizeKB}</td>
+        <td>${r.allowedCpuTimePerInterval.toFixed(2)}</td>
+        <td>${r.calibratedDataSizeKB}</td>
         <td>${r.avgCpuTime.toFixed(2)}</td>
-        <td>${r.minCpuTime.toFixed(2)}</td>
-        <td>${r.maxCpuTime.toFixed(2)}</td>
+        <td>${r.cpuUtilizationPercent.toFixed(2)}%</td>
         <td>${r.avgWallClockTime.toFixed(2)}</td>
-        <td>${r.minWallClockTime.toFixed(2)}</td>
-        <td>${r.maxWallClockTime.toFixed(2)}</td>
+        <td>${r.minCpuTime.toFixed(2)}/${r.maxCpuTime.toFixed(2)}</td>
+        <td>${r.minWallClockTime.toFixed(2)}/${r.maxWallClockTime.toFixed(2)}</td>
         <td>${r.potentialThrottlingEvents}</td>
       </tr>
       `).join('')}
@@ -269,17 +281,10 @@ const generateHtml = (results: any[]) => {
       data: {
         datasets: [
           {
-            label: 'Initial Data Size (KB)',
-            data: ${JSON.stringify(initialDataSizes)},
+            label: 'Calibrated Data Size (KB)',
+            data: ${JSON.stringify(calibratedDataSizes)},
             backgroundColor: 'rgba(75, 192, 192, 0.7)',
             borderColor: 'rgba(75, 192, 192, 1)',
-            borderWidth: 1
-          },
-          {
-            label: 'Final Adapted Data Size (KB)',
-            data: ${JSON.stringify(finalDataSizes)},
-            backgroundColor: 'rgba(153, 102, 255, 0.7)',
-            borderColor: 'rgba(153, 102, 255, 1)',
             borderWidth: 1
           }
         ]
@@ -341,6 +346,39 @@ const generateHtml = (results: any[]) => {
             title: {
               display: true,
               text: 'Time (ms)'
+            }
+          }
+        }
+      }
+    });
+    
+    // CPU Utilization Chart
+    new Chart(document.getElementById('cpuUtilizationChart'), {
+      type: 'bar',
+      data: {
+        datasets: [{
+          label: 'CPU Utilization (%)',
+          data: ${JSON.stringify(cpuUtilization)},
+          backgroundColor: 'rgba(54, 162, 235, 0.7)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          x: {
+            type: 'linear',
+            position: 'bottom',
+            title: {
+              display: true,
+              text: 'Memory Size (MB)'
+            }
+          },
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'CPU Utilization (%)'
             }
           }
         }
