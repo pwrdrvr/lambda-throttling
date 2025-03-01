@@ -9,8 +9,14 @@
     "cdk": "cdk",
     "deploy": "ts-node src/cdk/deploy.ts",
     "test-throttling": "ts-node src/test-throttling.ts",
-    "monitor": "ts-node src/monitor-metrics.ts",
-    "run-all": "npm run deploy && npm run test-throttling && npm run monitor"
+    "test-throttling:128": "ts-node src/test-throttling.ts --memory=128 --duration=5000",
+    "test-throttling:256": "ts-node src/test-throttling.ts --memory=256 --duration=5000",
+    "test-throttling:512": "ts-node src/test-throttling.ts --memory=512 --duration=5000",
+    "test-throttling:1024": "ts-node src/test-throttling.ts --memory=1024 --duration=5000",
+    "test-throttling:1769": "ts-node src/test-throttling.ts --memory=1769 --duration=5000",
+    "test-throttling:long": "ts-node src/test-throttling.ts --duration=15000",
+    "visualize": "ts-node --transpile-only src/visualize-results.ts",
+    "run-all": "npm run deploy && npm run test-throttling && npm run visualize"
   },
   "keywords": [
     "aws",
@@ -20,7 +26,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "aws-sdk": "^2.1692.0"
+    "@aws-sdk/client-lambda": "^3.515.0",
+    "@aws-sdk/client-cloudwatch": "^3.515.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
