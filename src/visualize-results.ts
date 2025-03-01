@@ -598,6 +598,8 @@ function generateHtmlChart(resultsData: any[]): string {
 
   html += `
   </script>
+  <hr>
+  <p><a href="https://github.com/pwrdrvr/lambda-throttling">View project on GitHub</a></p>
   </div>
 </body>
 </html>`;

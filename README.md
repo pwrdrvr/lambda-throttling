@@ -81,6 +81,7 @@ npm run visualize
 
 This generates an HTML report with charts in the `charts/` directory.
 
+**[View the latest visualization report](https://pwrdrvr.github.io/lambda-throttling/)**
 4. Run everything in sequence (deploy, test, visualize):
 
 ```bash
