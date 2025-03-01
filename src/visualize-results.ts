@@ -195,23 +195,36 @@ function generateHtmlChart(resultsData: any[]): string {
 `;
 
   // Add individual memory size sections with throttling events timelines
-  Object.entries(resultsByMemory).forEach(([memorySize, results]) => {
+  Object.entries(resultsByMemory).forEach(([memorySize, results], index) => {
     // Sort results by timestamp (most recent first)
     results.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
     
     const latestResult = results[0];
+    const events = latestResult.throttlingEvents || [];
+    const iterationTimes = latestResult.iterationTimes || [];
     
     html += `
     <div class="chart-container">
       <h2>${memorySize} Memory - Throttling Events Timeline</h2>
       <p>Latest test from: ${new Date(latestResult.startTime).toLocaleString()}</p>
       <p>Throttling ratio: ${(latestResult.throttlingRatio * 100).toFixed(2)}%</p>
-      <p>Events detected: ${latestResult.throttlingEvents.length}</p>
+      <p>Events detected: ${events.length}</p>
       <p>CPU time used: ${latestResult.cpuTimeUsed ? latestResult.cpuTimeUsed.toFixed(2) : 'N/A'} ms</p>
       <p>Total iterations: ${latestResult.totalIterations || 'N/A'}</p>
       <canvas id="timeline${memorySize.replace(/\D/g, '')}"></canvas>
     </div>
 `;
+
+    // Add iteration times chart if available
+    if (iterationTimes && iterationTimes.length > 0) {
+      html += `
+    <div class="chart-container">
+      <h2>${memorySize} Memory - Iteration Times</h2>
+      <p>Shows the execution time of each iteration</p>
+      <canvas id="iterationchart${memorySize.replace(/\D/g, '')}"></canvas>
+    </div>
+`;
+    }
   });
 
   // Add JavaScript for charts
@@ -447,75 +460,140 @@ function generateHtmlChart(resultsData: any[]): string {
   // Add individual timeline charts for each memory size
   Object.entries(resultsByMemory).forEach(([memorySize, results], index) => {
     const latestResult = results[0];
-    const events = latestResult.throttlingEvents;
+    const events = latestResult.throttlingEvents || [];
+    const iterationTimes = latestResult.iterationTimes || [];
     
-    if (events.length === 0) {
-      return; // Skip memory sizes with no events
-    }
-    
-    html += `
-    // Timeline for ${memorySize}
-    new Chart(
-      document.getElementById('timeline${memorySize.replace(/\D/g, '')}'),
-      {
-        type: 'scatter',
-        data: {
-          datasets: [{
-            label: 'Throttling Events',
-            data: ${JSON.stringify(events.map((e, i) => {
-              // Calculate CPU time delta (if possible)
-              const prevCpuTime = i > 0 ? events[i-1].cpuTimeUsed : 0;
-              const cpuTimeDelta = e.cpuTimeUsed - prevCpuTime;
-              
-              return {
-                x: e.timeFromStart,
-                y: e.detectedDelayMs,
-                cpuTimeUsed: e.cpuTimeUsed,
-                cpuTimeDelta: cpuTimeDelta
-              };
-            }))},
-            backgroundColor: colorPalette[${index % 5}],
-            pointRadius: 5,
-          }]
-        },
-        options: {
-          scales: {
-            x: {
-              type: 'linear',
-              position: 'bottom',
-              title: {
-                display: true,
-                text: 'Time from Start (ms)'
+    // Only render throttling events chart if there are events
+    if (events.length > 0) {
+      html += `
+      // Timeline for ${memorySize}
+      new Chart(
+        document.getElementById('timeline${memorySize.replace(/\D/g, '')}'),
+        {
+          type: 'scatter',
+          data: {
+            datasets: [{
+              label: 'Throttling Events',
+              data: ${JSON.stringify(events.map((e, i) => {
+                // Calculate CPU time delta (if possible)
+                const prevCpuTime = i > 0 ? events[i-1].cpuTimeUsed : 0;
+                const cpuTimeDelta = e.cpuTimeUsed - prevCpuTime;
+                
+                return {
+                  x: e.timeFromStart,
+                  y: e.detectedDelayMs,
+                  iteration: e.iteration || (i + 1), // Use the iteration number if available, otherwise fall back to index+1
+                  cpuTimeUsed: e.cpuTimeUsed,
+                  cpuTimeDelta: cpuTimeDelta
+                };
+              }))},
+              backgroundColor: colorPalette[${index % 5}],
+              pointRadius: 5,
+            }]
+          },
+          options: {
+            scales: {
+              x: {
+                type: 'linear',
+                position: 'bottom',
+                title: {
+                  display: true,
+                  text: 'Time from Start (ms)'
+                }
+              },
+              y: {
+                title: {
+                  display: true,
+                  text: 'Delay Duration (ms)'
+                }
               }
             },
-            y: {
-              title: {
-                display: true,
-                text: 'Delay Duration (ms)'
-              }
-            }
-          },
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const point = context.raw;
-                  let label = 'Delay: ' + point.y.toFixed(2) + ' ms';
-                  if (point.cpuTimeUsed !== undefined) {
-                    label += ', CPU time: ' + point.cpuTimeUsed.toFixed(2) + ' ms';
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const point = context.raw;
+                    let label = 'Iteration: ' + point.iteration;
+                    label += ', Delay: ' + point.y.toFixed(2) + ' ms';
+                    if (point.cpuTimeUsed !== undefined) {
+                      label += ', CPU time: ' + point.cpuTimeUsed.toFixed(2) + ' ms';
+                    }
+                    if (point.cpuTimeDelta !== undefined) {
+                      label += ', CPU delta: ' + point.cpuTimeDelta.toFixed(2) + ' ms';
+                    }
+                    return label;
                   }
-                  if (point.cpuTimeDelta !== undefined) {
-                    label += ', CPU delta: ' + point.cpuTimeDelta.toFixed(2) + ' ms';
-                  }
-                  return label;
                 }
               }
             }
           }
         }
-      }
-    );
-`;
+      );
+      `;
+    }
+    
+    // Add iteration times chart if we have iteration data
+    if (iterationTimes && iterationTimes.length > 0) {
+      html += `
+      // Iteration times chart for ${memorySize}
+      new Chart(
+        document.getElementById('iterationchart${memorySize.replace(/\D/g, '')}'),
+        {
+          type: 'line',
+          data: {
+            labels: ${JSON.stringify(iterationTimes.map(it => it.iteration))},
+            datasets: [
+              {
+                label: 'Iteration Time (ms)',
+                data: ${JSON.stringify(iterationTimes.map(it => it.timeMs))},
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1,
+                yAxisID: 'y',
+                tension: 0.1
+              },
+              {
+                label: 'CPU Time (ms)',
+                data: ${JSON.stringify(iterationTimes.map(it => it.cpuTimeMs))},
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1,
+                yAxisID: 'y',
+                tension: 0.1
+              }
+            ]
+          },
+          options: {
+            scales: {
+              x: {
+                title: {
+                  display: true,
+                  text: 'Iteration Number'
+                }
+              },
+              y: {
+                title: {
+                  display: true,
+                  text: 'Time (ms)'
+                }
+              }
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const value = context.raw;
+                    const datasetLabel = context.dataset.label;
+                    return datasetLabel + ': ' + (typeof value === 'number' ? value.toFixed(2) : value) + ' ms';
+                  }
+                }
+              }
+            }
+          }
+        }
+      );
+      `;
+    }
   });
 
   html += `

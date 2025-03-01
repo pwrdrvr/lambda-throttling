@@ -27,7 +27,7 @@ This tool helps to:
 ### Installation
 
 ```bash
-git clone https://github.com/yourusername/lambda-throttling.git
+git clone https://github.com/pwrdrvr/lambda-throttling.git
 cd lambda-throttling
 npm install
 ```
@@ -89,16 +89,28 @@ npm run run-all
 
 ## How It Works
 
-1. The Lambda function runs CPU-intensive operations for a specified duration:
-   - Generates random data (configurable size, default 100KB)
-   - Performs cryptographic operations (SHA-256 hashing)
-   - Compresses data using zlib
-   - Tracks CPU usage through the Node.js process.cpuUsage() API
-2. It measures both CPU time and wall clock time using high-resolution timers
-3. Any significant difference between CPU time and wall clock time indicates CPU throttling
-4. The function detects and records specific throttling events (pauses in execution)
-5. Results including CPU time used, iterations completed, and throttling events are saved
-6. Data is visualized with interactive charts showing throttling patterns and CPU utilization
+1. **Calibration Phase:**
+   - A 3,000 MB Lambda (over 1 full vCPU) is used to establish baseline performance
+   - Warmup iterations stabilize performance
+   - Precise measurements of unthrottled iteration time and CPU usage
+   - Establishes baseline metrics for detecting throttling
+   
+2. **Testing Phase:**
+   - Lambda functions at different memory levels run CPU-intensive operations:
+     - Generates random data (configurable size, default 100KB)
+     - Performs cryptographic operations (SHA-256 hashing)
+     - Compresses data using zlib
+     - Tracks CPU usage through the Node.js process.cpuUsage() API
+   - Each iteration's performance is measured against the baseline
+   - Both wall-clock time and CPU time are measured using high-resolution timers
+   - Significant delays compared to baseline indicate throttling
+   
+3. **Analysis & Visualization:**
+   - Calculates throttling ratio (percentage of time spent throttled)
+   - Records timing of each iteration and throttling event
+   - Measures CPU efficiency compared to the unthrottled baseline
+   - Generates interactive visualizations showing throttling patterns
+   - Tracks iteration-by-iteration performance to detect early throttling
 
 ## Testing Methodology
 

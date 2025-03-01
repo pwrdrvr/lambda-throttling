@@ -35,7 +35,14 @@ export const handler = async (event: any): Promise<any> => {
     throttlingRatio: 0,
     cpuTimeUsed: 0,
     totalIterations: 0,
+    // Track all iteration times for visualization
+    iterationTimes: [] as {
+      iteration: number,
+      timeMs: number,
+      cpuTimeMs: number
+    }[],
     throttlingEvents: [] as {
+      iteration: number,
       wallClockTime: number,
       detectedDelayMs: number,
       timeFromStart: number,
@@ -162,6 +169,9 @@ export const handler = async (event: any): Promise<any> => {
     
     // Run the CPU-intensive loop until we reach the test duration
     while (Date.now() - startRealTime < testDurationMs) {
+      // Current iteration number (1-based for better readability)
+      const currentIteration = results.totalIterations + 1;
+      
       // Perform CPU-intensive work
       burnCpu();
       results.totalIterations++;
@@ -174,39 +184,46 @@ export const handler = async (event: any): Promise<any> => {
       // Get current CPU usage
       const currentUsage = process.cpuUsage(startUsage);
       const cpuTimeUsed = (currentUsage.user + currentUsage.system) / 1000; // Convert to ms
+      const cpuTimeDelta = cpuTimeUsed - lastIterationCpuTime;
       
       // Detect delays (throttling) by comparing actual elapsed time with expected interval
       const timeElapsedWallClock = Date.now() - startRealTime;
+      
+      // Record this iteration time
+      results.iterationTimes.push({
+        iteration: currentIteration,
+        timeMs: elapsedSinceLastCheck,
+        cpuTimeMs: cpuTimeDelta > 0 ? cpuTimeDelta : 0
+      });
       
       // If we have baseline data, use it to detect throttling more precisely
       let isThrottled = false;
       if (baselineIterationTimeMs > 0) {
         // Calculate expected time based on baseline metrics
-        const cpuTimeDelta = cpuTimeUsed - lastIterationCpuTime;
         const expectedTime = baselineIterationTimeMs;
         const throttleFactor = elapsedSinceLastCheck / expectedTime;
         isThrottled = throttleFactor > 1.5; // If it took 50% longer than baseline, consider it throttled
         
         if (isThrottled) {
-          logMessages.push(`Precise throttling detected: Took ${elapsedSinceLastCheck.toFixed(2)}ms vs expected ${expectedTime.toFixed(2)}ms (${throttleFactor.toFixed(2)}x slower)`);
+          logMessages.push(`Precise throttling detected at iteration ${currentIteration}: Took ${elapsedSinceLastCheck.toFixed(2)}ms vs expected ${expectedTime.toFixed(2)}ms (${throttleFactor.toFixed(2)}x slower)`);
         }
-        
-        lastIterationCpuTime = cpuTimeUsed;
       }
       
       // Only log significant delays and ignore initial startup time
       if ((elapsedSinceLastCheck > logThreshold && timeElapsedWallClock > startLogBuffer) || isThrottled) {
         results.throttlingEvents.push({
+          iteration: currentIteration,
           wallClockTime: timeElapsedWallClock,
           detectedDelayMs: elapsedSinceLastCheck,
           timeFromStart: Date.now() - startRealTime,
           cpuTimeUsed
         });
         
-        logMessages.push(`Throttling detected at ${timeElapsedWallClock}ms: ${elapsedSinceLastCheck.toFixed(2)}ms delay, CPU time used: ${cpuTimeUsed.toFixed(2)}ms`);
+        logMessages.push(`Throttling detected at iteration ${currentIteration} (${timeElapsedWallClock}ms): ${elapsedSinceLastCheck.toFixed(2)}ms delay, CPU time used: ${cpuTimeUsed.toFixed(2)}ms`);
       }
       
       lastCheckTime = now;
+      lastIterationCpuTime = cpuTimeUsed; // Update for the next iteration
       loopCount++;
     }
   }
