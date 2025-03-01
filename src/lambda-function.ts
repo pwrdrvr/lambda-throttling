@@ -1,7 +1,10 @@
 /**
- * Lambda function that detects CPU throttling by running a spin loop
+ * Lambda function that detects CPU throttling by running CPU-intensive operations
  * and measuring execution time vs wall clock time.
  */
+import * as crypto from 'crypto';
+import * as zlib from 'zlib';
+
 export const handler = async (event: any): Promise<any> => {
   console.log('Lambda function invoked with event:', JSON.stringify(event));
   
@@ -10,6 +13,7 @@ export const handler = async (event: any): Promise<any> => {
   const intervalMs = event.intervalMs || 1; // How often to check the time (lower = more precision but more overhead)
   const logThreshold = event.logThreshold || 5; // Log when delays exceed this threshold (in ms)
   const startLogBuffer = event.startLogBuffer || 10; // Don't log delays in the first N ms (to avoid cold start noise)
+  const dataSize = event.dataSize || 100 * 1024; // Size of data to process (default 100KB)
   
   // Results data structure
   const results = {
@@ -18,10 +22,13 @@ export const handler = async (event: any): Promise<any> => {
     totalWallClockTime: 0,
     totalCpuTime: 0,
     throttlingRatio: 0,
+    cpuTimeUsed: 0,
+    totalIterations: 0,
     throttlingEvents: [] as {
       wallClockTime: number,
       detectedDelayMs: number,
-      timeFromStart: number
+      timeFromStart: number,
+      cpuTimeUsed: number
     }[],
     memorySize: process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE || 'unknown',
     functionName: process.env.AWS_LAMBDA_FUNCTION_NAME || 'unknown',
@@ -34,21 +41,46 @@ export const handler = async (event: any): Promise<any> => {
     return time[0] * 1000 + time[1] / 1000000;
   };
   
+  // CPU usage tracking
+  const startUsage = process.cpuUsage();
+  
+  // Function to perform CPU-intensive work
+  function burnCpu(): void {
+    // Generate random data
+    const data = crypto.randomBytes(dataSize);
+    
+    // Hash it (CPU intensive)
+    const hash = crypto.createHash('sha256').update(data).digest('hex');
+    
+    // Compress it (also CPU intensive)
+    const compressed = zlib.deflateSync(data);
+    
+    // More hashing for good measure
+    crypto.createHash('sha512').update(compressed).digest('hex');
+  }
+  
   // Start tracking time
   let lastCheckTime = hrTime();
   let loopCount = 0;
   const startRealTime = Date.now();
   let totalCpuTimeMs = 0;
   
-  // Run the spin loop until we reach the test duration
+  // Run the CPU-intensive loop until we reach the test duration
   while (Date.now() - startRealTime < testDurationMs) {
-    // Check the time after each interval
+    // Perform CPU-intensive work
+    burnCpu();
+    results.totalIterations++;
+    
+    // Check the time after each iteration
     const now = hrTime();
     const elapsedSinceLastCheck = now - lastCheckTime;
     totalCpuTimeMs += elapsedSinceLastCheck;
     
+    // Get current CPU usage
+    const currentUsage = process.cpuUsage(startUsage);
+    const cpuTimeUsed = (currentUsage.user + currentUsage.system) / 1000; // Convert to ms
+    
     // Detect delays (throttling) by comparing actual elapsed time with expected interval
-    // We allow for some overhead in the check itself
     const timeElapsedWallClock = Date.now() - startRealTime;
     
     // Only log significant delays and ignore initial startup time
@@ -56,29 +88,29 @@ export const handler = async (event: any): Promise<any> => {
       results.throttlingEvents.push({
         wallClockTime: timeElapsedWallClock,
         detectedDelayMs: elapsedSinceLastCheck,
-        timeFromStart: Date.now() - startRealTime
+        timeFromStart: Date.now() - startRealTime,
+        cpuTimeUsed
       });
       
-      console.log(`Throttling detected at ${timeElapsedWallClock}ms: ${elapsedSinceLastCheck.toFixed(2)}ms delay`);
+      console.log(`Throttling detected at ${timeElapsedWallClock}ms: ${elapsedSinceLastCheck.toFixed(2)}ms delay, CPU time used: ${cpuTimeUsed.toFixed(2)}ms`);
     }
     
     lastCheckTime = now;
     loopCount++;
-    
-    // Small pause to allow for better event loop scheduling
-    // Without this, Node.js might optimize the loop too aggressively
-    if (loopCount % 1000 === 0) {
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
   }
+  
+  // Get final CPU usage for reporting
+  const finalUsage = process.cpuUsage(startUsage);
+  results.cpuTimeUsed = (finalUsage.user + finalUsage.system) / 1000; // Convert to ms
   
   // Calculate final results
   results.endTime = Date.now();
   results.totalWallClockTime = results.endTime - results.startTime;
-  results.totalCpuTime = totalCpuTimeMs;
-  results.throttlingRatio = 1 - (totalCpuTimeMs / results.totalWallClockTime);
+  results.totalCpuTime = results.cpuTimeUsed; // Use the actual CPU time instead of high-resolution timer
+  results.throttlingRatio = 1 - (results.cpuTimeUsed / results.totalWallClockTime);
   
   console.log(`Test completed. Wall clock time: ${results.totalWallClockTime}ms, CPU time: ${results.totalCpuTime.toFixed(2)}ms`);
+  console.log(`CPU time used: ${results.cpuTimeUsed.toFixed(2)}ms, Total iterations: ${results.totalIterations}`);
   console.log(`Throttling ratio: ${(results.throttlingRatio * 100).toFixed(2)}% (higher = more throttling)`);
   console.log(`Detected ${results.throttlingEvents.length} throttling events`);
   

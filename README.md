@@ -63,8 +63,14 @@ npm run test-throttling:1769
 # Run a longer test (15 seconds)
 npm run test-throttling:long
 
+# Run with higher CPU intensity (500KB data)
+npm run test-throttling:intense
+
+# Run with extreme CPU intensity (1MB data)
+npm run test-throttling:extreme
+
 # Custom parameters
-npx ts-node src/test-throttling.ts --memory=512 --duration=10000
+npx ts-node src/test-throttling.ts --memory=512 --duration=10000 --dataSize=200
 ```
 
 3. Visualize the results:
@@ -83,11 +89,16 @@ npm run run-all
 
 ## How It Works
 
-1. The Lambda function runs a CPU-intensive spin loop for a specified duration
+1. The Lambda function runs CPU-intensive operations for a specified duration:
+   - Generates random data (configurable size, default 100KB)
+   - Performs cryptographic operations (SHA-256 hashing)
+   - Compresses data using zlib
+   - Tracks CPU usage through the Node.js process.cpuUsage() API
 2. It measures both CPU time and wall clock time using high-resolution timers
 3. Any significant difference between CPU time and wall clock time indicates CPU throttling
 4. The function detects and records specific throttling events (pauses in execution)
-5. Results are saved as JSON files and can be visualized using the built-in visualization tool
+5. Results including CPU time used, iterations completed, and throttling events are saved
+6. Data is visualized with interactive charts showing throttling patterns and CPU utilization
 
 ## Testing Methodology
 

@@ -23,6 +23,7 @@ const memorySizes = argMap.memory
   ? [parseInt(argMap.memory)] 
   : [128, 256, 512, 1024, 1769];
 const testDurationMs = parseInt(argMap.duration || '5000');
+const dataSize = parseInt(argMap.dataSize || '100') * 1024; // Data size in KB, convert to bytes
 const resultsDir = path.join(__dirname, '..', 'results');
 
 // Ensure results directory exists
@@ -39,6 +40,7 @@ async function runThrottlingTest(memorySize: number): Promise<any> {
     const payload = JSON.stringify({
       testDurationMs,
       logThreshold: 5, // Log delays greater than 5ms
+      dataSize, // Size of data to process in bytes
     });
     
     const command = new InvokeCommand({

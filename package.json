@@ -15,6 +15,8 @@
     "test-throttling:1024": "ts-node src/test-throttling.ts --memory=1024 --duration=5000",
     "test-throttling:1769": "ts-node src/test-throttling.ts --memory=1769 --duration=5000",
     "test-throttling:long": "ts-node src/test-throttling.ts --duration=15000",
+    "test-throttling:intense": "ts-node src/test-throttling.ts --dataSize=500",
+    "test-throttling:extreme": "ts-node src/test-throttling.ts --dataSize=1000",
     "visualize": "ts-node --transpile-only src/visualize-results.ts",
     "run-all": "npm run deploy && npm run test-throttling && npm run visualize"
   },

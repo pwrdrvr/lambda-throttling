@@ -151,6 +151,11 @@ function generateHtmlChart(resultsData: any[]): string {
       <h2>Number of Throttling Events by Memory Size</h2>
       <canvas id="throttlingEventsChart"></canvas>
     </div>
+    
+    <div class="chart-container">
+      <h2>CPU Utilization by Memory Size</h2>
+      <canvas id="cpuUtilizationChart"></canvas>
+    </div>
 `;
 
   // Add individual memory size sections with throttling events timelines
@@ -166,6 +171,8 @@ function generateHtmlChart(resultsData: any[]): string {
       <p>Latest test from: ${new Date(latestResult.startTime).toLocaleString()}</p>
       <p>Throttling ratio: ${(latestResult.throttlingRatio * 100).toFixed(2)}%</p>
       <p>Events detected: ${latestResult.throttlingEvents.length}</p>
+      <p>CPU time used: ${latestResult.cpuTimeUsed ? latestResult.cpuTimeUsed.toFixed(2) : 'N/A'} ms</p>
+      <p>Total iterations: ${latestResult.totalIterations || 'N/A'}</p>
       <canvas id="timeline${memorySize.replace(/\D/g, '')}"></canvas>
     </div>
 `;
@@ -265,6 +272,75 @@ function generateHtmlChart(resultsData: any[]): string {
         }
       }
     );
+    
+    // Data preparation for CPU utilization chart
+    const cpuData = ${JSON.stringify(Object.entries(resultsByMemory).map(([_, results]) => {
+      const latestResult = results[0];
+      return latestResult.cpuTimeUsed ? parseFloat(latestResult.cpuTimeUsed.toFixed(2)) : 0;
+    }))};
+    
+    const iterationData = ${JSON.stringify(Object.entries(resultsByMemory).map(([_, results]) => {
+      const latestResult = results[0];
+      return latestResult.totalIterations || 0;
+    }))};
+    
+    // Create CPU utilization chart
+    new Chart(
+      document.getElementById('cpuUtilizationChart'),
+      {
+        type: 'bar',
+        data: {
+          labels: memoryLabels,
+          datasets: [
+            {
+              label: 'CPU Time Used (ms)',
+              data: cpuData,
+              backgroundColor: 'rgba(54, 162, 235, 0.7)',
+              borderColor: 'rgba(54, 162, 235, 1)',
+              borderWidth: 1,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Total Iterations',
+              data: iterationData,
+              backgroundColor: 'rgba(255, 99, 132, 0.7)',
+              borderColor: 'rgba(255, 99, 132, 1)',
+              borderWidth: 1,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              position: 'left',
+              title: {
+                display: true,
+                text: 'CPU Time (ms)'
+              }
+            },
+            y1: {
+              beginAtZero: true,
+              position: 'right',
+              grid: {
+                drawOnChartArea: false
+              },
+              title: {
+                display: true,
+                text: 'Iterations'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Lambda Memory Size'
+              }
+            }
+          }
+        }
+      }
+    );
 `;
 
   // Add individual timeline charts for each memory size
@@ -287,7 +363,8 @@ function generateHtmlChart(resultsData: any[]): string {
             label: 'Throttling Events',
             data: ${JSON.stringify(events.map(e => ({
               x: e.timeFromStart,
-              y: e.detectedDelayMs
+              y: e.detectedDelayMs,
+              cpuTimeUsed: e.cpuTimeUsed
             })))},
             backgroundColor: colorPalette[${index % 5}],
             pointRadius: 5,
@@ -307,6 +384,20 @@ function generateHtmlChart(resultsData: any[]): string {
               title: {
                 display: true,
                 text: 'Delay Duration (ms)'
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const point = context.raw;
+                  let label = 'Delay: ' + point.y + ' ms';
+                  if (point.cpuTimeUsed !== undefined) {
+                    label += ', CPU time: ' + point.cpuTimeUsed.toFixed(2) + ' ms';
+                  }
+                  return label;
+                }
               }
             }
           }
